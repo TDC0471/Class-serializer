@@ -4,6 +4,7 @@
 #include <ostream>
 #include <fstream>
 #include <iostream>
+#include <list>
 
 //simple hash function to convert a string to a size_t
 size_t hash(const char* str)
@@ -234,11 +235,81 @@ public:
 		delete[] buffer;
 	}
 
+
+	void cleanModules(const std::list<size_t>& modules) //delete all modules except the ones in the list
+	{
+		char* pos = buffer;
+
+		const char* end = buffer + size;
+		while (pos < end)
+		{
+			Header header(pos);
+			auto it = std::find(modules.begin(), modules.end(), header.getHashedName());
+			//if the module is not in the list, delete it
+			if (it == modules.end())
+				deleteModule(reinterpret_cast<void*>(pos));
+			else
+			{
+				//get the footer
+				Footer footer{ pos + header.getSizeOfModule() - Footer::size() };
+
+				if (!footer.isValid())
+					throw std::exception("Expected footed not found in \"cleanModules\" likely corrupted save");
+
+				pos += header.getSizeOfModule();
+			}
+		}
+		buffer = static_cast<char*>(realloc(buffer, size));
+	}
+
+
+	template<typename... Ts>
+	void getModuleData(size_t hashedName, const ElementData<Ts&>&... variables)
+	{
+		if (module_t module = getModule(hashedName); module)
+		{
+			getElementsValues(module, variables...);
+			return;
+		}
+		
+		//if module doesn't exist, load default values into variables
+		loadDefaultValues(variables...);
+	}
+
+	template<typename... Ts>
+	void saveModule(size_t hashedName, const ElementData<Ts>&... pairs) 
+	{
+		if (module_t module = getModule(hashedName); module) 
+		{
+			setElementsValues(module, pairs...);
+			return;
+		}
+
+		createModule(hashedName, pairs...);
+	}
+
+
+private:
+
+	template<typename T>
+	void loadDefaultValues(const ElementData<T&>& variable)
+	{
+		variable.data = T{};
+	}
+
+	// Overload the function for multiple variables
+	template<typename T, typename... Ts>
+	void loadDefaultValues(const ElementData<T&>& variable, const ElementData<Ts&>&... variables)
+	{
+		variable.data = T{};
+		loadDefaultValues(variables...);
+	}
+
 	module_t getModule(const size_t& hashedName)
 	{
-		char* pos = static_cast<char*>(buffer);
+		char* pos = buffer;
 
-		const char* end = static_cast<char*>(buffer) + size;
+		const char* end = buffer + size;
 		while (pos < end)
 		{
 			Header header(pos);
@@ -257,23 +328,21 @@ public:
 		return nullptr;
 	}
 
-	template <typename... Ts>
-	void getElementsValues(module_t module, const std::initializer_list<std::pair<size_t, Ts&>...>& hashednames)
+	template <typename T, typename... Ts>
+	void getElementsValues(module_t module, const ElementData<T&>& var, const ElementData<Ts&>&... varables)
 	{
-		for (const std::pair<size_t, Ts&>& cur : hashednames)
-		{
-			cur.second = getElementsValues(module, cur.first);
-		}
+		var.data = getElementValue<T>(module, var.hashedName);
+		getElementsValues(module, varables...);
 	}
+	void getElementsValues(module_t module) {} //base case
 
-	template<typename... Ts>
-	void setElementsValues(module_t module, const std::initializer_list<ElementData<Ts>...>& elements)
+	template<typename T, typename... Ts>
+	void setElementsValues(module_t module, const ElementData<T>& element, const ElementData<Ts>&... elements) 
 	{
-		for (const ElementData<Ts>& cur : elements)
-		{
-			setElementValue(module, cur.hashedName, cur.data);
-		}
+		setElementValue(module, element.hashedName, element.data);
+		setElementsValues(module, elements...);
 	}
+	void setElementsValues(module_t module) {} //base case
 
 
 	template<typename T>
@@ -289,30 +358,15 @@ public:
 	template<typename T>
 	void setElementValue(module_t module, const size_t& hashedName, const T& data)
 	{
-		char* pos = getElementAddress(module, hashedName);
+		char* pos = static_cast<char*>(getElementAddress(module, hashedName));
 
 		if (!pos)
 		{
-			addElements(module, { hashedName, data });
+			addElements<T>(module, { hashedName, data });
 		}
 
-		*static_cast<T*>(pos += UnknownElement::size()) = data;
+		*reinterpret_cast<T*>(pos += UnknownElement::size()) = data;
 	}
-
-	template<typename... Ts>
-	void saveModule(size_t hashedName, const ElementData<Ts>&... pairs) 
-	{
-		if (module_t module = getModule(hashedName); module) 
-		{
-			addElements(module, pairs...);
-			return;
-		}
-
-		createModule(hashedName, pairs...);
-	}
-
-
-private:
 
 	template<typename... Ts>
 	module_t createModule(size_t hashedName, const ElementData<Ts>&... pairs)
@@ -336,11 +390,12 @@ private:
 	void addElements(module_t module, const ElementData<Ts>... pairs)
 	{
 		// Calculate the size of the module
-		Header tmpmod(module);
+		Header tmpmod(static_cast<char*>(module));
 		size_t size = tmpmod.getSizeOfModule() + (UnknownElement::size() * sizeof...(pairs)) + (sizeof(Ts) + ...);
 
 		rammodule_t newModule = copyModule(module, size);
 		deleteModule(module);
+		buffer = static_cast<char*>(realloc(buffer, size));
 
 		addElementInternal(static_cast<char*>(newModule) + tmpmod.getSizeOfModule(), pairs...);
 
@@ -387,18 +442,16 @@ private:
 		Header header(static_cast<char*>(module));
 		size += header.getSizeOfModule();
 		buffer = static_cast<char*>(realloc(buffer, size));
-		memcpy(static_cast<char*>(buffer) + size - header.getSizeOfModule(), module, header.getSizeOfModule());
+		memcpy(buffer + size - header.getSizeOfModule(), module, header.getSizeOfModule());
 
-		return static_cast<char*>(buffer) + size - header.getSizeOfModule();
+		return buffer + size - header.getSizeOfModule();
 	}
 
-	void deleteModule(module_t& module)
+	void deleteModule(module_t module)
 	{
 		Header header(static_cast<char*>(module));
 		memmove(module, static_cast<char*>(module) + header.getSizeOfModule(), size - reinterpret_cast<uintptr_t>(module) - header.getSizeOfModule());
 		size -= header.getSizeOfModule();
-		buffer = static_cast<char*>(realloc(buffer, size));
-		module = nullptr;
 	}
 
 	// Precondidtion: module is a valid module (queried from getModule)
