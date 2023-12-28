@@ -327,22 +327,18 @@ private:
 		}
 		return nullptr;
 	}
-
-	template <typename T, typename... Ts>
-	void getElementsValues(module_t module, const ElementData<T&>& var, const ElementData<Ts&>&... varables)
+	
+	template<typename... Ts>
+	void getElementsValues(module_t module, const ElementData<Ts&>&... variables)
 	{
-		var.data = getElementValue<T>(module, var.hashedName);
-		getElementsValues(module, varables...);
+		((variables.data = getElementValue<Ts>(module, variables.hashedName)), ...);
 	}
-	void getElementsValues(module_t module) {} //base case
 
-	template<typename T, typename... Ts>
-	void setElementsValues(module_t module, const ElementData<T>& element, const ElementData<Ts>&... elements) 
+	template<typename... Ts>
+	void setElementsValues(module_t module, const ElementData<Ts>&... elements)
 	{
-		setElementValue(module, element.hashedName, element.data);
-		setElementsValues(module, elements...);
+		(setElementValue(module, elements.hashedName, elements.data), ...);
 	}
-	void setElementsValues(module_t module) {} //base case
 
 
 	template<typename T>
@@ -414,11 +410,12 @@ private:
 		addElementInternal(address += element.size(), pairs...);
 	}
 
-	template<typename... Ts>
-	void addElementInternal(char* address, const ElementData<Ts>&... pairs)
-	{
-		addElementInternal(address, pairs...);
-	}
+	//template<typename... Ts>
+	//void addElementInternal(char* address, const ElementData<Ts>&... pairs)
+	//{
+
+	//	addElementInternal(address, pairs...);
+	//}
 
 	rammodule_t copyModule(module_t module) //Copies module into a new location in memory and deletes the old one
 	{
