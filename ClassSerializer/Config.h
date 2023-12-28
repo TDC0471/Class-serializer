@@ -328,6 +328,7 @@ private:
 		return nullptr;
 	}
 	
+	//make these 2 into lists in future
 	template<typename... Ts>
 	void getElementsValues(module_t module, const ElementData<Ts&>&... variables)
 	{
@@ -340,7 +341,6 @@ private:
 		(setElementValue(module, elements.hashedName, elements.data), ...);
 	}
 
-
 	template<typename T>
 	T getElementValue(module_t module, const size_t& hashedName)
 	{
@@ -350,6 +350,7 @@ private:
 
 		return *reinterpret_cast<T*>(pos += UnknownElement::size());
 	}
+
 
 	template<typename T>
 	void setElementValue(module_t module, const size_t& hashedName, const T& data)
