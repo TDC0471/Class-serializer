@@ -248,7 +248,7 @@ public:
 		}
 		
 		//if module doesn't exist, load default values into variables
-		[&]() { ((variables.data = Ts{}), ...); }();
+		 ((variables.data = Ts{}), ...);
 	}
 
 	template<typename... Ts>
