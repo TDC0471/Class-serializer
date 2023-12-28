@@ -70,7 +70,7 @@ public:
 struct UnknownElement
 {
 	const size_t hashedName;
-	const unsigned char dataType;
+	const size_t dataType;
 
 public:
 	UnknownElement(int hashedName, unsigned char dataType) : hashedName(hashedName), dataType(dataType) {}
@@ -109,9 +109,9 @@ class Element : UnknownElement
 	T data;
 
 public:
-	Element(size_t hashedName, const T& data) : UnknownElement(hashedName, typeToId<T>()), data(data) {}
+	Element(size_t hashedName, const T& data) : UnknownElement(hashedName, typeid(T)::hash_code), data(data) {}
 	Element(const UnknownElement& UE, char* UEAddress) : UnknownElement(UE.hashedName, UE.dataType), data(*reinterpret_cast<T*>(UEAddress + UnknownElement::size())) {}
-	Element(const ElementData<T>& ED) : UnknownElement(ED.hashedName, typeToId<T>()), data(ED.data) {}
+	Element(const ElementData<T>& ED) : UnknownElement(ED.hashedName, typeid(T)::hash_code), data(ED.data) {}
 
 	static inline size_t size() { return UnknownElement::size() + sizeof(T); }
 
@@ -136,22 +136,15 @@ public:
 	}
 };
 
-template<typename T>
-unsigned char typeToId()
-{
-	if (typeid(T) == typeid(int))
-		return 0x01;
-	else if (typeid(T) == typeid(float))
-		return 0x02;
-}
 
-size_t idToTSize(unsigned char id)
+
+size_t idToTSize(size_t id)
 {
 	switch (id)
 	{
-	case 0x01:
+	case typeid(int)::hash_code:
 		return sizeof(int);
-	case 0x02:
+	case typeid(float)::hash_code:
 		return sizeof(float);
 	}
 }
