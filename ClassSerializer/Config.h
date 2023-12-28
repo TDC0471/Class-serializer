@@ -6,14 +6,13 @@
 #include <iostream>
 #include <list>
 
-//simple hash function to convert a string to a size_t
-size_t hash(const char* str)
+//TODO:
+//FOR SOMEREASON IF THE VARIABLE HASH IS BIGGER THAN 3 LETTERS IT DOESNT WORK
+
+//simple hash function to convert a string to a size_t 
+constexpr size_t hash(const char* str, size_t h = 0)
 {
-	size_t hash = 5381;
-	int c;
-	while (c = *str++)
-		hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
-	return hash;
+	return !str[h] ? 5381 : (hash(str, h + 1) * 33) ^ str[h];
 }
 
 struct Footer
@@ -66,18 +65,6 @@ public:
 		std::memcpy(address, &hashedName, sizeof(size_t));
 		std::memcpy(static_cast<char*>(address) + sizeof(size_t), &sizeOfModule, sizeof(size_t));
 	}
-
-	void write(std::ostream& os)
-	{
-		os.write((char*)&hashedName, sizeof(size_t));
-		os.write((char*)&sizeOfModule, sizeof(size_t));
-	}
-
-	void read(std::istream& is)
-	{
-		is.read((char*)&hashedName, sizeof(size_t));
-		is.read((char*)&sizeOfModule, sizeof(size_t));
-	}
 };
 
 struct UnknownElement
@@ -95,24 +82,12 @@ public:
 
 	}
 
-	static inline size_t size() { return sizeof(size_t) + sizeof(unsigned char); }
-
-	void write(std::ostream& os)
-	{
-		os.write((char*)&hashedName, sizeof(size_t));
-		os.write((char*)&dataType, sizeof(unsigned char));
-	}
+	static inline size_t size() { return sizeof(size_t) + sizeof(char); }
 
 	void write(void* address)
 	{
 		std::memcpy(address, &hashedName, sizeof(size_t));
-		std::memcpy(static_cast<char*>(address) + sizeof(size_t), &dataType, sizeof(unsigned char));
-	}
-
-	void read(std::istream& is)
-	{
-		is.read((char*)&hashedName, sizeof(size_t));
-		is.read((char*)&dataType, sizeof(unsigned char));
+		std::memcpy(static_cast<char*>(address) + sizeof(size_t), &dataType, sizeof(char));
 	}
 
 
@@ -273,7 +248,7 @@ public:
 		}
 		
 		//if module doesn't exist, load default values into variables
-		loadDefaultValues(variables...);
+		[&]() { ((variables.data = Ts{}), ...); }();
 	}
 
 	template<typename... Ts>
@@ -291,20 +266,6 @@ public:
 
 private:
 
-	template<typename T>
-	void loadDefaultValues(const ElementData<T&>& variable)
-	{
-		variable.data = T{};
-	}
-
-	// Overload the function for multiple variables
-	template<typename T, typename... Ts>
-	void loadDefaultValues(const ElementData<T&>& variable, const ElementData<Ts&>&... variables)
-	{
-		variable.data = T{};
-		loadDefaultValues(variables...);
-	}
-
 	module_t getModule(const size_t& hashedName)
 	{
 		char* pos = buffer;
@@ -313,6 +274,9 @@ private:
 		while (pos < end)
 		{
 			Header header(pos);
+
+			printf("HHashedname: %d\n", header.getHashedName());
+
 			if (header.getHashedName() == hashedName)
 				return pos;
 
@@ -327,6 +291,32 @@ private:
 		}
 		return nullptr;
 	}
+
+	// Precondidtion: module is a valid module (queried from getModule)
+	void* getElementAddress(module_t module, const size_t& hashedName) //ERROR!
+	{
+		std::cout << "Hashedname: " << hashedName << std::endl;
+		Header header(static_cast<char*>(module));
+		char* pos = static_cast<char*>(module) + Header::size();
+
+
+		while (pos - module < header.getSizeOfModule() - Footer::size())
+		{
+
+			UnknownElement UElem(pos);
+			printf("%zu, %d\n", UElem.hashedName, UElem.hashedName == hashedName);
+			if (UElem.hashedName == hashedName)
+				return pos;
+
+			pos += (UnknownElement::size() + idToTSize(UElem.dataType));
+
+		}
+		if (Footer(pos).isValid())
+			return nullptr;
+
+		throw std::exception("Footer not found in \"getElementAddress\" likely corrupted save");
+	}
+
 	
 	//make these 2 into lists in future
 	template<typename... Ts>
@@ -451,30 +441,4 @@ private:
 		memmove(module, static_cast<char*>(module) + header.getSizeOfModule(), size - reinterpret_cast<uintptr_t>(module) - header.getSizeOfModule());
 		size -= header.getSizeOfModule();
 	}
-
-	// Precondidtion: module is a valid module (queried from getModule)
-	void* getElementAddress(module_t module, const size_t& hashedName) //ERROR!
-	{
-		std::cout << "Hashedname: " << hashedName << std::endl;
-		Header header(static_cast<char*>(module));
-		char* pos = static_cast<char*>(module) + Header::size();
-
-
-		while (pos - module < header.getSizeOfModule() - Footer::size())
-		{
-
-			UnknownElement UElem(pos);
-			std::cout << UElem.hashedName << " " << (UElem.hashedName == hashedName) << std::endl;
-			if (UElem.hashedName == hashedName)
-				return pos;
-
-			pos += (UnknownElement::size() + idToTSize(UElem.dataType));
-
-		}
-		if (Footer(pos).isValid())
-			return nullptr;
-
-		throw std::exception("Footer not found in \"getElementAddress\" likely corrupted save");
-	}
-
 };
