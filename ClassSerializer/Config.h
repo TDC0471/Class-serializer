@@ -73,21 +73,21 @@ struct UnknownElement
 	const size_t dataType;
 
 public:
-	UnknownElement(int hashedName, unsigned char dataType) : hashedName(hashedName), dataType(dataType) {}
+	UnknownElement(int hashedName, size_t dataType) : hashedName(hashedName), dataType(dataType) {}
 
 	UnknownElement(char* address) :
 		hashedName(*reinterpret_cast<size_t*>(address)),
-		dataType(*reinterpret_cast<unsigned char*>(address + sizeof(size_t)))
+		dataType(*reinterpret_cast<size_t*>(address + sizeof(size_t)))
 	{
 
 	}
 
-	static inline size_t size() { return sizeof(size_t) + sizeof(char); }
+	static inline size_t size() { return sizeof(size_t) * 2; }
 
 	void write(void* address)
 	{
 		std::memcpy(address, &hashedName, sizeof(size_t));
-		std::memcpy(static_cast<char*>(address) + sizeof(size_t), &dataType, sizeof(char));
+		std::memcpy(static_cast<char*>(address) + sizeof(size_t), &dataType, sizeof(size_t));
 	}
 
 
